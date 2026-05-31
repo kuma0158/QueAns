@@ -1,0 +1,101 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  displayName  String
+  role         String   @default("user") // "admin" or "user"
+  createdAt    DateTime @default(now())
+
+  sessions  Session[]
+  questions Question[]
+}
+
+model Session {
+  id        String   @id
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Question {
+  id           Int       @id @default(autoincrement())
+  projectId    Int
+  content      String
+  questioner   String
+  createdDate  DateTime  @default(now())
+  deadline     DateTime
+  answerText   String?
+  answerer     String?
+  status       String    @default("new") // new | in_progress | done
+  notes        String?
+  createdById  Int?
+  updatedAt    DateTime  @updatedAt
+
+  createdBy   User?              @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  project     Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  categories  QuestionCategory[]
+  attachments Attachment[]
+
+  @@index([status])
+  @@index([deadline])
+  @@index([projectId])
+}
+
+model Project {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  questions Question[]
+}
+
+model Category {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  color     String   @default("#64748b") // hex; used for badge
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  questionCategories QuestionCategory[]
+}
+
+model QuestionCategory {
+  questionId Int
+  categoryId Int
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([questionId, categoryId])
+  @@index([categoryId])
+}
+
+model Attachment {
+  id           Int      @id @default(autoincrement())
+  questionId   Int
+  storedName   String   // random filename on disk
+  originalName String
+  mimeType     String
+  size         Int
+  createdAt    DateTime @default(now())
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
