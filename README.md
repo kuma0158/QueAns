@@ -1,191 +1,135 @@
 # QueAns - 社員研修QA管理システム
 
-質問・回答を一元管理する社内ツール。Next.js (App Router) + SQLite + Prisma で構築、Docker でデプロイ。
+質問・回答を一元管理する社内ツール。Next.js (App Router) + Postgres(Neon) + Prisma + Vercel Blob 構成。
 
 ## 機能
 
 - プロジェクト配下に質問をぶら下げる構造
-- カテゴリーは多対多で複数付与可
-- 質問の登録・編集・削除（案件名, 確認事項, 質問者, 起票日, 期限, 回答, 回答者, ステータス, 備考）
+- カテゴリーは多対多
+- 質問の CRUD（案件名, 確認事項, 質問者, 起票日, 期限, 回答, 回答者, ステータス, 備考）
 - ステータス自動判定（新規 / 対応中 / 完了 / 期限超過）
 - ダッシュボード（進捗率、プロジェクト/カテゴリー別件数、期限超過リスト）
-- 添付ファイル（画像はサムネプレビュー、その他はダウンロード）
-- 簡易ログイン（ID / パスワード）
+- 添付ファイル（画像はサムネプレビュー、その他はDL）
+- 簡易ログイン（ID/Pass）
 - カテゴリー・プロジェクト CRUD 管理画面
 
 ## ローカル開発
 
+Neon (or 互換のPostgres) の接続文字列が必要です。Vercel ダッシュボードで Neon を作成 → Vercel CLI で env pull するのが楽：
+
+```powershell
+npm i -g vercel
+vercel link        # プロジェクト紐付け
+vercel env pull .env.local   # Vercelの環境変数をローカルに取得
+```
+
+または手動で `.env` の `DATABASE_URL` を Neon の接続文字列にする。
+
 ```powershell
 cd e:\QueAns
 npm install
-npx prisma migrate dev
-npm run db:seed
+npx prisma migrate dev --name init   # 初回。マイグレーション作成 + Neon に適用
+npm run db:seed                      # 初期ユーザー＆カテゴリー
 npm run dev
 ```
 
-http://localhost:3000 ・ 初期ログイン `admin` / `admin123`
+http://localhost:3000 ・ ログイン `admin` / `admin123` (`.env` で `SEED_ADMIN_PASSWORD` 上書き可)
 
-DB: `prisma/dev.db` (SQLite)、添付: `./uploads/`
+## Vercel + Neon 本番デプロイ
 
-## Xserver VPS にデプロイ
+### ① Neon DB を作る (Vercel ダッシュボードから1クリック)
 
-### 構成
-```
-[Internet] → :443 [Caddy(自動SSL)] → :3000 [Next.js app] → /data/db/queans.db (SQLite)
-                                                          → /data/uploads/    (添付)
-```
+1. Vercel ダッシュボード → 対象プロジェクト → **Storage** タブ
+2. `Create Database` → **Neon (Postgres)** を選択
+3. リージョン: `Asia Pacific (Singapore)` 推奨（Tokyo無ければ）
+4. 名前を付けて作成
+5. **`Connect Project`** を押す → 自動で `DATABASE_URL` 等の環境変数がプロジェクトに注入される
 
-両方とも docker compose で起動。永続データは VPS の `./data/` ディレクトリ。
+### ② Vercel Blob を作る (添付ファイル永続化)
 
-### 0. 事前準備
-- Xserver VPS 2GB プラン以上を契約 (¥830/月)
-- ドメイン (例: `queans.example.com`) を Xserver サーバーパネルで取得 or DNS で VPS の IP に向ける
-- VPS の OS は **Ubuntu 22.04 (or 24.04) LTS** を選択
+1. 同じ Storage タブ → `Create Database` → **Blob**
+2. 名前を付けて作成 → `Connect Project` で `BLOB_READ_WRITE_TOKEN` 自動注入
 
-### 1. VPS 初回セットアップ (SSH 接続して実行)
+### ③ ローカルで初期マイグレーション & seed
 
-```bash
-ssh root@<your-vps-ip>     # またはユーザー名
-
-# Docker & Compose plugin インストール
-curl -fsSL https://get.docker.com | sh
-apt-get install -y docker-compose-plugin git
-systemctl enable --now docker
-
-# 一般ユーザー (任意。root運用しないなら)
-useradd -m -G docker -s /bin/bash queans
-su - queans
-
-# ファイアウォール (Xserver VPS は管理画面でも設定可)
-ufw allow 22/tcp
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw enable
+```powershell
+cd e:\QueAns
+vercel env pull .env.local           # ①②の env を取得
+# .env.local の DATABASE_URL をコピーして .env の DATABASE_URL に貼る (or .env.local をそのまま使用)
+npx prisma migrate dev --name init   # ローカル & Neon にマイグレーション適用
+$env:SEED_ADMIN_PASSWORD = "<本番用パスワード>"
+$env:SEED_USER_PASSWORD  = "<同じく>"
+npm run db:seed                      # 初期ユーザー & カテゴリーを Neon に投入
 ```
 
-### 2. アプリ配置
+`prisma/migrations/<timestamp>_init/` が生成されます。**git に commit & push してください**。
 
-```bash
-sudo mkdir -p /srv/queans && sudo chown $USER:$USER /srv/queans
-cd /srv/queans
-git clone https://github.com/kuma0158/QueAns.git .
+### ④ git push → 自動デプロイ
 
-# 環境変数ファイル作成
-cp .env.example .env
-nano .env   # 下記参照
+```powershell
+git add prisma/migrations vercel.json package.json src/
+git commit -m "Switch to Neon (Postgres) + Vercel Blob"
+git push
 ```
 
-`.env` を編集：
-```env
-DOMAIN=queans.example.com
-LETSENCRYPT_EMAIL=you@example.com
-SESSION_SECRET=<openssl rand -hex 32 で生成した64文字>
-SEED_ADMIN_PASSWORD=<強いパスワード>
-SEED_USER_PASSWORD=<強いパスワード>
-```
+Vercel が自動デプロイ → `vercel.json` の buildCommand に `prisma migrate deploy` があるので、ビルド時にスキーマ適用される。
 
-`SESSION_SECRET` 生成:
-```bash
-openssl rand -hex 32
-```
+### ⑤ 動作確認
 
-### 3. DNS 設定
+`https://que-ans-eight.vercel.app/login` で③で設定した admin パスワードでログイン → プロジェクト/質問の作成・編集を試す → コールドスタート後 (5分以上経過) も残っていることを確認。
 
-ドメイン管理側 (Xserver なら DNSレコード設定) で：
-- `queans.example.com` の A レコード → VPS の IP
+## DB の中身を変更する方法
 
-設定後 `dig queans.example.com` で確認、伝播してから次へ (通常5〜30分)。
-
-### 4. 起動
-
-```bash
-cd /srv/queans
-docker compose up -d --build
-```
-
-初回ビルドは5〜15分。完了後：
-- Caddy が自動で Let's Encrypt から SSL 証明書取得 (10〜60秒)
-- アプリが `prisma migrate deploy` でスキーマ適用 → seed で初期ユーザー投入
-
-### 5. 動作確認
-
-```bash
-docker compose ps                # 両方 healthy
-docker compose logs -f app       # アプリログ
-docker compose logs -f caddy     # 証明書取得状況
-```
-
-ブラウザで `https://queans.example.com` を開き、`.env` に書いた admin パスワードでログイン。
-
-## 運用コマンド
-
-| 操作 | コマンド |
+| やり方 | 使う場面 |
 |---|---|
-| 更新 (コード変更後) | `cd /srv/queans && git pull && docker compose up -d --build app` |
-| ログ確認 | `docker compose logs -f app` |
-| 再起動 | `docker compose restart app` |
-| 停止 | `docker compose down` |
-| DBバックアップ | `cp data/db/queans.db data/db/backup-$(date +%F).db` |
-| 添付バックアップ | `tar -czf uploads-$(date +%F).tar.gz data/uploads` |
-| DB復元 | `docker compose down && cp <backup> data/db/queans.db && docker compose up -d` |
-| 中に入って調査 | `docker compose exec app sh` |
+| **Neon Console** (https://console.neon.tech) | 行を直接編集・SQL実行 |
+| **`npx prisma studio`** (ローカルから接続) | GUI で各テーブルを CRUD |
+| **アプリの管理画面** | カテゴリー/プロジェクトはアプリ内で編集可能 |
+| **`psql` コマンド** | スクリプト一括実行 |
 
-### 定期バックアップ (cron 例)
-
-```bash
-crontab -e
+例: ローカルから Prisma Studio で Neon を直接操作：
+```powershell
+$env:DATABASE_URL = "<Neonの接続文字列>"
+npx prisma studio    # → http://localhost:5555
 ```
-```
-# 毎日午前3時に SQLite と uploads を圧縮バックアップ (30日分保持)
-0 3 * * * cd /srv/queans && tar -czf backups/queans-$(date +\%F).tar.gz data/db data/uploads && find backups -mtime +30 -delete
-```
-
-## アーキテクチャ
-
-- **app** コンテナ: Next.js 14 + Prisma + SQLite
-- **caddy** コンテナ: リバースプロキシ + 自動Let's Encrypt SSL
-- 通信: Caddy → app は内部ネットワーク `web` 経由のみ (app の3000は外部非公開)
-- データ永続化: ホストの `./data/` を `/data` にマウント
-  - `./data/db/queans.db` ← SQLite
-  - `./data/uploads/` ← 添付ファイル
 
 ## 環境変数
 
-| 変数 | 用途 | デフォルト |
-|---|---|---|
-| `DOMAIN` | 公開ドメイン | 必須 |
-| `LETSENCRYPT_EMAIL` | SSL証明書通知用 | 必須 |
-| `SESSION_SECRET` | Cookieセッション署名 | 必須 |
-| `SEED_ADMIN_PASSWORD` | 初期admin password | `admin123` |
-| `SEED_USER_PASSWORD` | 初期user password | `user123` |
-| `DATABASE_URL` | DB接続先 (compose内で自動設定) | `file:/data/db/queans.db` |
-| `UPLOAD_ROOT` | 添付保存先 (compose内で自動設定) | `/data/uploads` |
+| 変数 | ローカル | Vercel | 自動注入 |
+|---|---|---|---|
+| `DATABASE_URL` | **必須** (Neon接続文字列) | **必須** | ✓ (Storage連携) |
+| `SESSION_SECRET` | 任意 | **必須** | × 手動設定 |
+| `BLOB_READ_WRITE_TOKEN` | 任意 | Blob使うなら必須 | ✓ (Storage連携) |
+| `UPLOAD_ROOT` | 任意 | 不要 | — |
+| `SEED_ADMIN_PASSWORD` | 任意 | seed時のみ | — |
 
 ## スキーマ変更時
 
 ```powershell
-# ローカルで開発
-npx prisma migrate dev --name <name>
+npx prisma migrate dev --name <name>    # ローカルでmigration作成 & Neon適用
 git add prisma/migrations
 git commit -m "schema: <name>"
-git push
+git push                                 # Vercel build で migrate deploy 自動適用
 ```
 
-VPS 側：
-```bash
-cd /srv/queans
-git pull
-docker compose up -d --build app
-# コンテナ起動時に prisma migrate deploy が自動適用
-```
+## 別経路: Xserver VPS + Docker
+
+Vercel を使わず自前ホスト運用したい場合の構成も同梱（`Dockerfile`, `docker-compose.yml`, `caddy/`）。
+ただし schema が `postgresql` になっているので Docker 運用時も Postgres が必要。SQLite に戻す場合は schema の `provider` を `sqlite` に戻し migration を作り直してください。
 
 ## 技術スタック
 
 - Next.js 14 (App Router)
 - TypeScript
 - Tailwind CSS
-- Prisma 5 + SQLite
-- bcryptjs (パスワードハッシュ)
+- Prisma 5 + PostgreSQL (Neon)
+- `@vercel/blob`
+- bcryptjs
 - Cookie ベースの簡易セッション
-- Docker / Docker Compose
-- Caddy (リバースプロキシ + 自動SSL)
+
+## 注意事項
+
+- 初期パスワード `admin123` / `user123` は本番で必ず変更
+- Neon の無料枠は 0.5GB DB + コンピュート時間制限あり。超えたら自動スケール or アップグレード
+- Vercel Blob 無料枠は 5GB
+- 添付ファイルは認証ゲート経由で配信（`/api/attachments/[id]` がストリーミング）

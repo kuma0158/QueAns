@@ -13,6 +13,8 @@ import {
 
 type Ctx = { params: { id: string } };
 
+const useBlob = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN);
+
 export async function GET(_req: Request, { params }: Ctx) {
   const questionId = Number(params.id);
   if (!Number.isFinite(questionId))
@@ -40,7 +42,7 @@ export async function POST(req: Request, { params }: Ctx) {
   if (files.length === 0)
     return NextResponse.json({ error: "no files" }, { status: 400 });
 
-  await ensureDir(questionUploadDir(questionId));
+  if (!useBlob()) await ensureDir(questionUploadDir(questionId));
 
   const created = [];
   for (const file of files) {
@@ -53,12 +55,29 @@ export async function POST(req: Request, { params }: Ctx) {
     }
     const ext = path.extname(file.name);
     const storedName = `${Date.now()}_${randomBytes(8).toString("hex")}${ext}`;
-    const buf = Buffer.from(await file.arrayBuffer());
-    await fs.writeFile(attachmentDiskPath(questionId, storedName), buf);
+
+    let storedField: string | null = null;
+    let urlField: string | null = null;
+
+    if (useBlob()) {
+      const { put } = await import("@vercel/blob");
+      const blob = await put(`questions/${questionId}/${storedName}`, file, {
+        access: "public",
+        contentType: file.type || "application/octet-stream",
+        addRandomSuffix: false,
+      });
+      urlField = blob.url;
+    } else {
+      const buf = Buffer.from(await file.arrayBuffer());
+      await fs.writeFile(attachmentDiskPath(questionId, storedName), buf);
+      storedField = storedName;
+    }
+
     const row = await prisma.attachment.create({
       data: {
         questionId,
-        storedName,
+        storedName: storedField,
+        url: urlField,
         originalName: file.name,
         mimeType: file.type || "application/octet-stream",
         size: file.size,

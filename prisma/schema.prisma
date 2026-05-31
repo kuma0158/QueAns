@@ -4,8 +4,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {
@@ -89,7 +90,8 @@ model QuestionCategory {
 model Attachment {
   id           Int      @id @default(autoincrement())
   questionId   Int
-  storedName   String   // random filename on disk (UPLOAD_ROOT)
+  storedName   String?  // local fs fallback path (UPLOAD_ROOT配下)
+  url          String?  // Vercel Blob URL (BLOB_READ_WRITE_TOKEN ありの場合)
   originalName String
   mimeType     String
   size         Int
