@@ -1,6 +1,7 @@
 generator client {
-  provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x"]
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -89,7 +90,8 @@ model QuestionCategory {
 model Attachment {
   id           Int      @id @default(autoincrement())
   questionId   Int
-  storedName   String   // random filename on disk
+  storedName   String?  // legacy: random filename on local disk (UPLOAD_ROOT)
+  url          String?  // Vercel Blob URL (preferred for new uploads when BLOB token is set)
   originalName String
   mimeType     String
   size         Int
