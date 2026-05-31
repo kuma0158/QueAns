@@ -3,6 +3,8 @@ import "./globals.css";
 import { getCurrentUser } from "@/lib/session";
 import { TopNav } from "@/components/TopNav";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "QueAns - 社員研修QA管理",
   description: "社員研修のQ&A管理システム",
