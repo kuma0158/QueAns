@@ -1,0 +1,14 @@
+{$DOMAIN} {
+	tls {$LETSENCRYPT_EMAIL}
+
+	encode gzip
+	reverse_proxy app:3000 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	# 添付ファイルアップロード上限 (Next.jsの方では10MB制限済み、Caddy側は余裕を持って20MB)
+	request_body {
+		max_size 20MB
+	}
+}

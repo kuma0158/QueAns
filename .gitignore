@@ -8,5 +8,6 @@ build
 *.db-journal
 prisma/dev.db*
 uploads/
+data/
 .DS_Store
 next-env.d.ts

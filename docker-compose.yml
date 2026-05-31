@@ -1,0 +1,42 @@
+services:
+  app:
+    build: .
+    image: queans:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "file:/data/db/queans.db"
+      UPLOAD_ROOT: "/data/uploads"
+      SESSION_SECRET: "${SESSION_SECRET:?SESSION_SECRET must be set in .env}"
+      SEED_ADMIN_PASSWORD: "${SEED_ADMIN_PASSWORD:-admin123}"
+      SEED_USER_PASSWORD: "${SEED_USER_PASSWORD:-user123}"
+    volumes:
+      - ./data:/data
+    networks:
+      - web
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: "${DOMAIN:?DOMAIN must be set in .env (e.g. queans.example.com)}"
+      LETSENCRYPT_EMAIL: "${LETSENCRYPT_EMAIL:?LETSENCRYPT_EMAIL must be set in .env}"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - web
+
+networks:
+  web:
+
+volumes:
+  caddy_data:
+  caddy_config:

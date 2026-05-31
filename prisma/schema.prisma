@@ -4,7 +4,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -89,8 +89,7 @@ model QuestionCategory {
 model Attachment {
   id           Int      @id @default(autoincrement())
   questionId   Int
-  storedName   String?  // legacy: random filename on local disk (UPLOAD_ROOT)
-  url          String?  // Vercel Blob URL (preferred for new uploads when BLOB token is set)
+  storedName   String   // random filename on disk (UPLOAD_ROOT)
   originalName String
   mimeType     String
   size         Int
