@@ -11,3 +11,6 @@ uploads/
 data/
 .DS_Store
 next-env.d.ts
+
+.vercel
+.env*
