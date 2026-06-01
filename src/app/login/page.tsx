@@ -64,9 +64,6 @@ export default function LoginPage() {
         >
           {loading ? "ログイン中..." : "ログイン"}
         </button>
-        <p className="mt-4 text-center text-xs text-slate-500">
-          初期: admin / admin123 ・ user / user123
-        </p>
       </form>
     </div>
   );
